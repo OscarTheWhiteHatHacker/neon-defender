@@ -782,13 +782,14 @@
     ctx.strokeStyle = 'rgba(255,255,255,0.55)';
     ctx.lineWidth = 1.5;
 
+    // every enemy is a single flat filled silhouette: no notched tails, no
+    // inner outlines, nothing that reads as a folded or extruded surface.
     if (e.type === 'grunt') {
       ctx.rotate(Math.atan2(P.y - e.y, P.x - e.x));
       ctx.beginPath();
       ctx.moveTo(e.r, 0);
-      ctx.lineTo(-e.r * 0.8, e.r * 0.78);
-      ctx.lineTo(-e.r * 0.35, 0);
-      ctx.lineTo(-e.r * 0.8, -e.r * 0.78);
+      ctx.lineTo(-e.r * 0.86, e.r * 0.74);
+      ctx.lineTo(-e.r * 0.86, -e.r * 0.74);
       ctx.closePath();
       ctx.fill();
       ctx.stroke();
@@ -797,19 +798,10 @@
       polygon(4, e.r, 0);
       ctx.fill();
       ctx.stroke();
-      ctx.shadowBlur = 0;
-      ctx.fillStyle = 'rgba(4,5,12,0.75)';
-      polygon(4, e.r * 0.42, Math.PI / 4);
-      ctx.fill();
     } else {
       ctx.rotate(e.age * 0.5);
       polygon(6, e.r, 0);
       ctx.fill();
-      ctx.stroke();
-      ctx.shadowBlur = 0;
-      ctx.strokeStyle = 'rgba(4,5,12,0.6)';
-      ctx.lineWidth = 3;
-      polygon(6, e.r * 0.55, Math.PI / 6);
       ctx.stroke();
     }
     ctx.restore();
@@ -834,24 +826,18 @@
     ctx.globalAlpha = blink ? 0.32 : 1;
     ctx.shadowColor = '#38f5ff';
     ctx.shadowBlur = 22;
+    // flat triangle: a straight-sided silhouette with a solid base, so the ship
+    // reads as a 2D shape instead of a folded paper-plane style dart.
     ctx.fillStyle = '#c9feff';
+    ctx.strokeStyle = 'rgba(255,255,255,0.7)';
+    ctx.lineWidth = 1.5;
     ctx.beginPath();
-    ctx.moveTo(19, 0);
-    ctx.lineTo(-12, 12);
-    ctx.lineTo(-6, 0);
-    ctx.lineTo(-12, -12);
+    ctx.moveTo(18, 0);
+    ctx.lineTo(-11, 11);
+    ctx.lineTo(-11, -11);
     ctx.closePath();
     ctx.fill();
-
-    // engine trail
-    ctx.shadowBlur = 12;
-    ctx.fillStyle = 'rgba(56,245,255,0.55)';
-    ctx.beginPath();
-    ctx.moveTo(-8, 5);
-    ctx.lineTo(-8 - rand(6, 16), 0);
-    ctx.lineTo(-8, -5);
-    ctx.closePath();
-    ctx.fill();
+    ctx.stroke();
     ctx.restore();
 
     if (P.shield > 0) {
