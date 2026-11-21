@@ -30,6 +30,17 @@
   let bgGrad = null;
   const stars = [];
 
+  // Enemy bodies are sized against the arena, not the display. Radii in ENEMY
+  // are authored for this reference canvas; enemySizeScale() stretches them so a
+  // grunt covers the same share of the screen on a phone and on a 4K monitor.
+  const REF_W = 960, REF_H = 600;
+  const SIZE_SCALE_MIN = 0.75, SIZE_SCALE_MAX = 1.5;
+  let sizeScale = 1;
+
+  function enemySizeScale() {
+    return clamp(Math.sqrt((W * H) / (REF_W * REF_H)), SIZE_SCALE_MIN, SIZE_SCALE_MAX);
+  }
+
   function resize() {
     DPR = Math.min(window.devicePixelRatio || 1, 2);
     const rect = canvas.getBoundingClientRect();
@@ -39,6 +50,8 @@
     canvas.width = Math.max(1, Math.round(W * DPR));
     canvas.height = Math.max(1, Math.round(H * DPR));
     ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    sizeScale = enemySizeScale();
+    applyEnemySizes();
 
     bgGrad = ctx.createRadialGradient(W / 2, H * 0.45, 0, W / 2, H * 0.45, Math.max(W, H) * 0.75);
     bgGrad.addColorStop(0, 'rgba(56,245,255,0.075)');
@@ -119,6 +132,8 @@
     lives: 3, invuln: 0, shield: 0, rapid: 0, triple: 0,
   };
 
+  // r is measured in world units on the 960x600 reference canvas; every spawn
+  // multiplies it by the live canvas scale (see enemySizeScale).
   const ENEMY = {
     grunt:   { hp: 2, r: 13, speed: 88,  score: 10, color: '#ff3d81' },
     shooter: { hp: 3, r: 14, speed: 74,  score: 25, color: '#ffb020' },
@@ -127,6 +142,12 @@
 
   const waveQueue = [];
   const enemies = [];
+
+  // Live enemies keep the radius they were authored with (rBase) so a resize or
+  // orientation change re-fits them to the new arena without drifting.
+  function applyEnemySizes() {
+    for (const e of enemies) e.r = e.rBase * sizeScale;
+  }
   const bullets = [];
   const ebullets = [];
   const particles = [];
@@ -416,11 +437,16 @@
 
   function spawnEnemy(type, sx, sy) {
     const base = ENEMY[type];
-    const scale = 1 + Math.min(1.3, (G.wave - 1) * 0.09);
+    // The wave ramp now grows the hull instead of the throttle: bigger bodies
+    // crowd the arena and are harder to slip past, and the radius is then fitted
+    // to the live canvas rather than the enemy being made faster.
+    const waveScale = 1 + Math.min(0.45, (G.wave - 1) * 0.045);
+    const rBase = base.r * waveScale;
+    const r = rBase * sizeScale;
     let x = sx, y = sy;
 
     if (x === undefined) {
-      const m = 70;
+      const m = 70 + r;
       const side = Math.floor(Math.random() * 4);
       if (side === 0) { x = rand(-m, W + m); y = -m; }
       else if (side === 1) { x = W + m; y = rand(-m, H + m); }
@@ -428,12 +454,12 @@
       else { x = -m; y = rand(-m, H + m); }
     }
 
-    const hp = Math.max(1, Math.round(base.hp * scale));
+    const hp = Math.max(1, Math.round(base.hp * waveScale));
     const e = {
       type, x, y, vx: 0, vy: 0,
-      r: base.r,
+      r, rBase,
       hp, maxhp: hp,
-      speed: base.speed * DIFFICULTY[G.difficulty].speed * (1 + Math.min(0.55, (G.wave - 1) * 0.03)),
+      speed: base.speed * DIFFICULTY[G.difficulty].speed,
       score: base.score,
       color: base.color,
       fireCd: rand(0.6, 1.6),

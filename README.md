@@ -34,7 +34,8 @@ are identical, so scores stay comparable.
 
 - Three enemy types — chasers, strafing shooters, and tanks that split into grunts when destroyed
 - Three difficulty levels — easy, medium and hard, each with a distinct enemy speed
-- Endless waves that scale in count, health and speed
+- Endless waves that scale in count, health and enemy size
+- Enemy bodies measured against the arena, so the same enemy fills the same share of the screen on a phone or a 4K monitor
 - Combo multiplier for chained kills
 - Pickups: rapid fire, triple shot, shield, extra life
 - High score saved to `localStorage`
