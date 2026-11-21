@@ -31,10 +31,11 @@
   function resize() {
     DPR = Math.min(window.devicePixelRatio || 1, 2);
     const rect = canvas.getBoundingClientRect();
-    W = Math.max(320, Math.round(rect.width || window.innerWidth));
-    H = Math.max(320, Math.round(rect.height || window.innerHeight));
-    canvas.width = Math.round(W * DPR);
-    canvas.height = Math.round(H * DPR);
+    // world units == CSS pixels, so pointer input maps 1:1 even after a resize
+    W = Math.max(1, Math.round(rect.width || window.innerWidth));
+    H = Math.max(1, Math.round(rect.height || window.innerHeight));
+    canvas.width = Math.max(1, Math.round(W * DPR));
+    canvas.height = Math.max(1, Math.round(H * DPR));
     ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
 
     bgGrad = ctx.createRadialGradient(W / 2, H * 0.45, 0, W / 2, H * 0.45, Math.max(W, H) * 0.75);
@@ -127,6 +128,28 @@
   try { G.best = parseInt(localStorage.getItem(BEST_KEY), 10) || 0; } catch (e) { G.best = 0; }
 
   // ------------------------------------------------------------------ input
+  // Pointer events arrive in CSS pixels; the world is drawn in world units.
+  // Map through the live canvas rect so aim stays under the cursor whenever the
+  // CSS box and the backing store disagree (resize, zoom, DPR change).
+  function pointerPos(e) {
+    const rect = canvas.getBoundingClientRect();
+    const sx = rect.width > 0 ? W / rect.width : 1;
+    const sy = rect.height > 0 ? H / rect.height : 1;
+    return { x: (e.clientX - rect.left) * sx, y: (e.clientY - rect.top) * sy };
+  }
+
+  let resizeQueued = false;
+  function queueResize() {
+    if (resizeQueued) return;
+    resizeQueued = true;
+    requestAnimationFrame(() => {
+      resizeQueued = false;
+      resize();
+    });
+  }
+  window.addEventListener('resize', queueResize);
+  window.addEventListener('orientationchange', queueResize);
+
   const KEYMAP = {
     KeyA: 'left', ArrowLeft: 'left',
     KeyD: 'right', ArrowRight: 'right',
@@ -172,15 +195,15 @@
       touch.y = 0;
       try { canvas.setPointerCapture(e.pointerId); } catch (err) { /* noop */ }
     } else {
+      const p = pointerPos(e);
+      mouse.x = p.x;
+      mouse.y = p.y;
       mouse.down = true;
       mouse.active = true;
     }
   });
 
   canvas.addEventListener('pointermove', (e) => {
-    const rect = canvas.getBoundingClientRect();
-    mouse.x = e.clientX - rect.left;
-    mouse.y = e.clientY - rect.top;
     if (e.pointerType === 'touch' && touch.active && e.pointerId === touch.id) {
       const dx = e.clientX - touch.ox;
       const dy = e.clientY - touch.oy;
@@ -194,7 +217,13 @@
         touch.x = 0;
         touch.y = 0;
       }
+      const tp = pointerPos(e);
+      mouse.x = tp.x;
+      mouse.y = tp.y;
     } else {
+      const p = pointerPos(e);
+      mouse.x = p.x;
+      mouse.y = p.y;
       mouse.active = true;
     }
   });
