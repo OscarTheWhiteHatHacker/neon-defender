@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#04050c">
+<title>Neon Defender</title>
+<meta name="description" content="A tiny neon arena shooter that runs in your browser. Survive endless waves, chase the high score. No dependencies, no build step.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%2304050c'/%3E%3Cpath d='M16 6l9 20-9-6-9 6z' fill='%2338f5ff'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app">
+  <canvas id="game" aria-label="Neon Defender game area"></canvas>
+
+  <div id="hud">
+    <div class="hud-group">
+      <div id="score" class="score">0</div>
+      <div id="best" class="best">BEST 0</div>
+      <div id="combo" class="combo"></div>
+    </div>
+    <div class="hud-group right">
+      <div id="wave" class="wave">WAVE 1</div>
+      <div id="lives" class="lives"></div>
+    </div>
+    <div id="powerups" class="powerups"></div>
+  </div>
+
+  <div id="overlay" class="overlay"></div>
+</div>
+<script src="game.js"></script>
+</body>
+</html>
