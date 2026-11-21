@@ -25,6 +25,12 @@
   const BEST_KEY = 'neon-defender-best';
 
   let W = 960, H = 600, DPR = 1;
+  // Reference playfield the tuning constants were balanced against. Speeds are
+  // authored in reference pixels per second and stretched by the live canvas so
+  // the swarm closes in at the same *relative* pace on any screen size.
+  const BASE_W = 960, BASE_H = 600;
+  const BASE_DIAG = Math.hypot(BASE_W, BASE_H);
+  let worldScale = 1;
   let bgGrad = null;
   const stars = [];
 
@@ -34,6 +40,15 @@
     // world units == CSS pixels, so pointer input maps 1:1 even after a resize
     W = Math.max(1, Math.round(rect.width || window.innerWidth));
     H = Math.max(1, Math.round(rect.height || window.innerHeight));
+
+    // Diagonal ratio keeps the pacing honest on both wide and tall viewports;
+    // clamped so a phone or an ultrawide never turns the swarm into a blur or a
+    // crawl.
+    worldScale = clamp(Math.hypot(W, H) / BASE_DIAG, 0.6, 2.5);
+    // Live enemies follow the new scale, so resizing mid-wave doesn't freeze or
+    // rocket the ones already on screen.
+    for (const e of enemies) e.speed = e.baseSpeed * worldScale;
+
     canvas.width = Math.max(1, Math.round(W * DPR));
     canvas.height = Math.max(1, Math.round(H * DPR));
     ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
@@ -387,11 +402,15 @@
     }
 
     const hp = Math.max(1, Math.round(base.hp * scale));
+    // Authored speed (wave ramp included) stays in reference units; the canvas
+    // scale is applied on top so every size plays at the same relative pace.
+    const tunedSpeed = base.speed * (1 + Math.min(0.55, (G.wave - 1) * 0.03));
     const e = {
       type, x, y, vx: 0, vy: 0,
       r: base.r,
       hp, maxhp: hp,
-      speed: base.speed * (1 + Math.min(0.55, (G.wave - 1) * 0.03)),
+      baseSpeed: tunedSpeed,
+      speed: tunedSpeed * worldScale,
       score: base.score,
       color: base.color,
       fireCd: rand(0.6, 1.6),
@@ -431,7 +450,6 @@
         vy: Math.sin(a) * speed,
         r: 4,
         dmg: 1,
-        life: 1.05,
       });
     }
     burst(P.x + Math.cos(P.aim) * 20, P.y + Math.sin(P.aim) * 20, '#9ffcff', 2, 90, 0.18);
@@ -617,12 +635,14 @@
   }
 
   function updateBullets(dt) {
+    // Player shots live until they clear the playfield edge — no lifetime timer,
+    // so a bullet that hasn't left the screen never vanishes in mid-air.
     for (let i = bullets.length - 1; i >= 0; i--) {
       const b = bullets[i];
       b.x += b.vx * dt;
       b.y += b.vy * dt;
-      b.life -= dt;
-      if (b.life <= 0 || b.x < -40 || b.x > W + 40 || b.y < -40 || b.y > H + 40) {
+      const m = b.r + 40; // trail length, so nothing pops out while still visible
+      if (b.x < -m || b.x > W + m || b.y < -m || b.y > H + m) {
         bullets.splice(i, 1);
         continue;
       }
@@ -1095,6 +1115,10 @@
   window.__NEON__ = {
     G, P, enemies, bullets, ebullets, particles, pickups,
     startGame, spawnEnemy, killEnemy, resetGame, gameOver, hurtPlayer,
+    updateBullets, updateEnemies, resize,
     get waveQueue() { return waveQueue; },
+    get W() { return W; },
+    get H() { return H; },
+    get worldScale() { return worldScale; },
   };
 })();

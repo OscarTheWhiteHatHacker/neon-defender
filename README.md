@@ -21,11 +21,12 @@ On touch screens: drag anywhere to move, the turret auto-fires at the nearest en
 
 - Three enemy types — chasers, strafing shooters, and tanks that split into grunts when destroyed
 - Endless waves that scale in count, health and speed
+- Bullets fly until they leave the screen edge — no mid-air expiry
 - Combo multiplier for chained kills
 - Pickups: rapid fire, triple shot, shield, extra life
 - High score saved to `localStorage`
 - Particles, screen shake, procedural WebAudio blips — zero asset files
-- Responsive canvas with device-pixel-ratio scaling, works on phone and desktop
+- Responsive canvas with device-pixel-ratio scaling, works on phone and desktop — enemy speed scales with the playfield so pacing is identical at any size
 
 ## Run locally
 
