@@ -149,6 +149,14 @@
     tank:    { hp: 9, r: 24, speed: 54,  score: 40, color: '#a06bff' },
   };
 
+  // Issue #14: the ship is deliberately sluggish. Its top speed is pegged just
+  // above the chaser it has to escape, so the swarm is always on your tail and
+  // the only way to open a gap is to keep moving. Fire rate is slow too: every
+  // shot has to count.
+  const PLAYER_SPEED_EDGE = 1.2;   // just 20% faster than a same-wave grunt
+  const PLAYER_FIRE_CD = 0.5;      // seconds between shots (~2 shots/s)
+  const PLAYER_RAPID_CD = 0.22;    // the rapid-fire pickup is still a real upgrade
+
   const waveQueue = [];
   const enemies = [];
 
@@ -603,6 +611,14 @@
     }
   }
 
+  // A grunt in this wave, at this difficulty, is the yardstick for how fast the
+  // ship may go: it stays a fixed 20% ahead of the chasers at every wave, so the
+  // wave ramp closes in on the player instead of being outrun.
+  function playerTopSpeed() {
+    return ENEMY.grunt.speed * sizeScale * DIFFICULTY[G.difficulty].speed *
+      waveSpeedScale() * PLAYER_SPEED_EDGE;
+  }
+
   // ------------------------------------------------------------------ update
   function updatePlayer(dt) {
     if (P.invuln > 0) P.invuln -= dt;
@@ -616,7 +632,7 @@
     const m = Math.hypot(ix, iy);
     if (m > 1) { ix /= m; iy /= m; }
 
-    const MAX = 345 * sizeScale;   // ship tempo stays matched to the arena
+    const MAX = playerTopSpeed();   // barely faster than a chaser, on purpose
     const k = 1 - Math.exp(-dt * 14);
     P.vx += (ix * MAX - P.vx) * k;
     P.vy += (iy * MAX - P.vy) * k;
@@ -640,7 +656,7 @@
     const firing = isTouch ? !!near : (mouse.down || keys.fire);
     if (firing && P.fireCd <= 0) {
       shoot();
-      P.fireCd = P.rapid > 0 ? 0.082 : 0.16;
+      P.fireCd = P.rapid > 0 ? PLAYER_RAPID_CD : PLAYER_FIRE_CD;
     }
   }
 
