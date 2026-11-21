@@ -61,7 +61,8 @@ gets very fast very quickly.
 ## What's in it
 
 - Three enemy types — chasers, strafing shooters, and tanks that split into grunts when destroyed
-- Pixel-art hulls for every enemy, rasterised from hand-drawn grids and blitted with nearest-neighbour scaling (no image files)
+- Pixel-art hulls for every enemy *and* your own interceptor — pointed nose, white canopy, lit wing leading edges, twin nozzles with a throttle-reactive exhaust plume — all rasterised from hand-drawn grids and blitted with nearest-neighbour scaling (no image files)
+- A white hit-flash on the hull the moment you take a hit, matching the enemy damage flash
 - Three difficulty levels — easy, medium and hard, each with a distinct enemy speed
 - Endless waves that scale in count, health, enemy size and enemy speed (+125% per wave)
 - Enemy bodies *and* movement speeds measured against the arena, so the game keeps the same tempo and proportions on a phone or a 4K monitor
