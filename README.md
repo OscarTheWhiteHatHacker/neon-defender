@@ -41,11 +41,13 @@ gets very fast very quickly.
 ## What's in it
 
 - Three enemy types — chasers, strafing shooters, and tanks that split into grunts when destroyed
+- Pixel-art hulls for every enemy, rasterised from hand-drawn grids and blitted with nearest-neighbour scaling (no image files)
 - Three difficulty levels — easy, medium and hard, each with a distinct enemy speed
 - Endless waves that scale in count, health, enemy size and enemy speed (+125% per wave)
-- Enemy bodies measured against the arena, so the same enemy fills the same share of the screen on a phone or a 4K monitor
+- Enemy bodies *and* movement speeds measured against the arena, so the game keeps the same tempo and proportions on a phone or a 4K monitor
+- Shots fly until they leave the arena — no mid-air expiry
 - Combo multiplier for chained kills
-- Pickups: rapid fire, triple shot, shield, extra life
+- Pickups drop from roughly 45% of kills (guaranteed within six), with rapid fire, triple shot, shield and extra life
 - High score saved to `localStorage`
 - Particles, screen shake, procedural WebAudio blips — zero asset files
 - Responsive canvas with device-pixel-ratio scaling, works on phone and desktop

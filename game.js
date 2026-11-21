@@ -132,6 +132,7 @@
     spawnTimer: 0,
     banner: 0,
     bannerText: '',
+    dryKills: 0,
   };
 
   const P = {
@@ -352,6 +353,7 @@
     G.spawnTimer = 0;
     G.banner = 0;
     G.bannerText = '';
+    G.dryKills = 0;
 
     mouse.x = W / 2;
     mouse.y = H * 0.25;
@@ -467,13 +469,16 @@
       type, x, y, vx: 0, vy: 0,
       r, rBase,
       hp, maxhp: hp,
-      speed: base.speed * DIFFICULTY[G.difficulty].speed * waveSpeedScale(),
+      // Issue #6: closing speed is expressed per-arena, so a 4K canvas plays at
+      // the same tempo as the 960x600 reference instead of feeling sluggish.
+      speed: base.speed * sizeScale * DIFFICULTY[G.difficulty].speed * waveSpeedScale(),
       score: base.score,
       color: base.color,
       fireCd: rand(0.6, 1.6),
       hurt: 0,
       age: 0,
       seed: rand(0, TAU),
+      face: rand(0, TAU),
     };
     enemies.push(e);
     burst(x, y, base.color, 5, 110, 0.4);
@@ -497,7 +502,7 @@
   function shoot() {
     const spread = P.triple > 0 ? [-0.13, 0, 0.13] : [0];
     const muzzle = 18;
-    const speed = 780;
+    const speed = 780 * sizeScale;
     for (const s of spread) {
       const a = P.aim + s;
       bullets.push({
@@ -507,7 +512,6 @@
         vy: Math.sin(a) * speed,
         r: 4,
         dmg: 1,
-        life: 1.05,
       });
     }
     burst(P.x + Math.cos(P.aim) * 20, P.y + Math.sin(P.aim) * 20, '#9ffcff', 2, 90, 0.18);
@@ -515,7 +519,7 @@
   }
 
   function enemyShoot(e, nx, ny) {
-    const sp = 265;
+    const sp = 265 * sizeScale;
     ebullets.push({
       x: e.x + nx * (e.r + 4),
       y: e.y + ny * (e.r + 4),
@@ -590,7 +594,13 @@
         spawnEnemy('grunt', e.x + Math.cos(a) * 26, e.y + Math.sin(a) * 26);
       }
     }
-    if (Math.random() < 0.12) dropPickup(e.x, e.y);
+    // Issue #9: far more generous drops - 45% per kill, plus a guaranteed drop
+    // after six dry kills so a run never starves.
+    G.dryKills += 1;
+    if (Math.random() < 0.45 || G.dryKills >= 6) {
+      dropPickup(e.x, e.y);
+      G.dryKills = 0;
+    }
   }
 
   // ------------------------------------------------------------------ update
@@ -606,7 +616,7 @@
     const m = Math.hypot(ix, iy);
     if (m > 1) { ix /= m; iy /= m; }
 
-    const MAX = 345;
+    const MAX = 345 * sizeScale;   // ship tempo stays matched to the arena
     const k = 1 - Math.exp(-dt * 14);
     P.vx += (ix * MAX - P.vx) * k;
     P.vy += (iy * MAX - P.vy) * k;
@@ -646,17 +656,24 @@
       const nx = dx / d;
       const ny = dy / d;
 
+      // Hulls steer toward the player instead of snapping: keeps the pixel art
+      // readable as it turns.
+      const faceTarget = Math.atan2(ny, nx);
+      let turn = faceTarget - e.face;
+      turn = Math.atan2(Math.sin(turn), Math.cos(turn));
+      e.face += turn * Math.min(1, dt * 9);
+
       if (e.type === 'grunt') {
         e.vx = nx * e.speed;
         e.vy = ny * e.speed;
       } else if (e.type === 'shooter') {
-        const want = 250;
+        const want = 250 * sizeScale;
         const radial = d > want + 40 ? 1 : d < want - 40 ? -1 : 0;
         const tang = Math.sin(e.age * 0.85 + e.seed) * 0.8;
         e.vx = nx * e.speed * radial - ny * e.speed * tang;
         e.vy = ny * e.speed * radial + nx * e.speed * tang;
         e.fireCd -= dt;
-        if (e.fireCd <= 0 && d < 640) {
+        if (e.fireCd <= 0 && d < 640 * sizeScale) {
           enemyShoot(e, nx, ny);
           e.fireCd = rand(1.4, 2.2) * Math.max(0.55, 1 - G.wave * 0.02);
         }
@@ -697,8 +714,8 @@
       const b = bullets[i];
       b.x += b.vx * dt;
       b.y += b.vy * dt;
-      b.life -= dt;
-      if (b.life <= 0 || b.x < -40 || b.x > W + 40 || b.y < -40 || b.y > H + 40) {
+      // Issue #6: shots live until they leave the arena - no mid-screen expiry.
+      if (b.x < -40 || b.x > W + 40 || b.y < -40 || b.y > H + 40) {
         bullets.splice(i, 1);
         continue;
       }
@@ -848,38 +865,132 @@
     ctx.closePath();
   }
 
-  function drawEnemy(e) {
-    const hit = e.hurt > 0;
-    ctx.save();
-    ctx.translate(e.x, e.y);
-    ctx.shadowColor = e.color;
-    ctx.shadowBlur = hit ? 30 : 16;
-    ctx.fillStyle = hit ? '#ffffff' : e.color;
-    ctx.strokeStyle = 'rgba(255,255,255,0.55)';
-    ctx.lineWidth = 1.5;
+  // ---- pixel-art enemy hulls -------------------------------------------
+  // Issue #3: every enemy type is a hand-authored pixel sprite instead of a
+  // plain polygon. Each grid is rasterised once into offscreen canvases (a body
+  // copy plus a white hit-flash copy) and blitted with nearest-neighbour
+  // scaling so the pixels stay crisp at any arena size.
+  const SPRITE_ART = {
+    grunt: {
+      palette: { a: '#e01b63', b: '#ff5c95', c: '#ffffff', d: '#ffa8c6' },
+      rows: [
+        '....a....',
+        '...aba...',
+        '...aba...',
+        '..aabaa..',
+        '..aabaa..',
+        '.aaabaaa.',
+        'aabbbbbaa',
+        'aa.bbb.aa',
+        '...d.d...',
+      ],
+    },
+    shooter: {
+      palette: { a: '#e06a00', b: '#ffb020', c: '#fff3d6', d: '#ff5a00' },
+      rows: [
+        '.....a.....',
+        '....aaa....',
+        '...aabaa...',
+        '..aabbbaa..',
+        '.aabbbbbaa.',
+        'aabbbcbbbaa',
+        'aabbbbbbbaa',
+        'aaabbbbbaaa',
+        '..aaabaaa..',
+        '...aa.aa...',
+        '...d...d...',
+      ],
+    },
+    tank: {
+      palette: { a: '#6a2fd6', b: '#a06bff', c: '#ffffff', d: '#4a17a8' },
+      rows: [
+        '......a......',
+        '.....aaa.....',
+        '....aabaa....',
+        '...aabbbaa...',
+        '..aabbbbbaa..',
+        '.aabbbbbbbaa.',
+        'aabbbbcbbbbaa',
+        'aabbbbbbbbbaa',
+        'aaabbbbbbbaaa',
+        '.aabbbbbbbaa.',
+        '..aabbcbbaa..',
+        '...aa...aa...',
+        '..dd.....dd..',
+      ],
+    },
+  };
 
-    // every enemy is a single flat filled silhouette: no notched tails, no
-    // inner outlines, nothing that reads as a folded or extruded surface.
-    if (e.type === 'grunt') {
-      ctx.rotate(Math.atan2(P.y - e.y, P.x - e.x));
-      ctx.beginPath();
-      ctx.moveTo(e.r, 0);
-      ctx.lineTo(-e.r * 0.86, e.r * 0.74);
-      ctx.lineTo(-e.r * 0.86, -e.r * 0.74);
-      ctx.closePath();
-      ctx.fill();
-      ctx.stroke();
-    } else if (e.type === 'shooter') {
-      ctx.rotate(e.age * 1.6);
-      polygon(4, e.r, 0);
-      ctx.fill();
-      ctx.stroke();
-    } else {
-      ctx.rotate(e.age * 0.5);
-      polygon(6, e.r, 0);
-      ctx.fill();
-      ctx.stroke();
-    }
+  const OUTLINE = '#070911';
+  function rasteriseSprite(rows, palette) {
+    const h = rows.length;
+    const w = rows[0].length;
+    const solid = (x, y) => y >= 0 && y < h && x >= 0 && x < w && rows[y][x] !== '.';
+    const paint = (colours) => {
+      const c = document.createElement('canvas');
+      c.width = w;
+      c.height = h;
+      const g = c.getContext('2d');
+      // 1px dark outline around every lit cell - the thing that makes a grid of
+      // squares read as a sprite instead of a glowing blob.
+      for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+          if (solid(x, y)) continue;
+          if (solid(x - 1, y) || solid(x + 1, y) || solid(x, y - 1) || solid(x, y + 1)) {
+            g.fillStyle = OUTLINE;
+            g.fillRect(x, y, 1, 1);
+          }
+        }
+      }
+      for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+          const ch = rows[y][x];
+          if (ch === '.' || !colours[ch]) continue;
+          g.fillStyle = colours[ch];
+          g.fillRect(x, y, 1, 1);
+        }
+      }
+      return c;
+    };
+    const white = {};
+    for (const k of Object.keys(palette)) white[k] = '#ffffff';
+    return { w, h, body: paint(palette), flash: paint(white) };
+  }
+
+  const SPRITES = {};
+  for (const type of Object.keys(SPRITE_ART)) {
+    const art = SPRITE_ART[type];
+    SPRITES[type] = rasteriseSprite(art.rows, art.palette);
+  }
+
+  function drawEnemy(e) {
+    const spr = SPRITES[e.type];
+    if (!spr) return;
+    const hit = e.hurt > 0;
+    // Hull width tracks the enemy radius, which is already canvas-fitted. The
+    // scale snaps to whole pixels and the origin snaps to the pixel grid so the
+    // sprite is never half-smeared.
+    const s = Math.max(1, Math.round((e.r * 2.6) / spr.w));
+
+    ctx.save();
+    // soft bloom behind the hull, so it still pops without blurring the pixels
+    ctx.globalAlpha = hit ? 0.32 : 0.16;
+    ctx.fillStyle = e.color;
+    ctx.beginPath();
+    ctx.arc(e.x, e.y, e.r * 1.55, 0, TAU);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+
+    ctx.translate(Math.round(e.x), Math.round(e.y));
+    ctx.rotate(e.face + Math.PI / 2);   // art points up, e.face points at the player
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(
+      hit ? spr.flash : spr.body,
+      -(spr.w * s) / 2,
+      -(spr.h * s) / 2,
+      spr.w * s,
+      spr.h * s
+    );
     ctx.restore();
 
     // health pip for damaged heavies
