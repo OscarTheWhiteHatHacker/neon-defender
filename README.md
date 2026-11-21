@@ -30,6 +30,26 @@ are identical, so scores stay comparable.
 | MEDIUM | x1.55 | Quite fast |
 | HARD | x2.05 | Very fast — chasers close in from every side |
 
+The ship's top speed rides the same multiplier, so every mode keeps the
+"barely outrun them" margin — HARD is faster for everything, and if anything
+punishes a slow player hardest.
+
+## Speed
+
+The ship is deliberately slow. Its top speed is pegged 20% above a **chaser of
+the same wave** — so you can only just outrun a grunt, shooters and tanks stall
+out behind you, and every wave's speed ramp pulls the whole swarm closer again
+(the ship ramps with the chasers, it never gains on them). Shots leave the barrel
+about twice a second, so each one has to count; the rapid-fire pickup is the only
+thing that makes the gun feel lively.
+
+| Ship | Value |
+| --- | --- |
+| Top speed | chaser speed x1.2 (same difficulty and wave ramp) |
+| Fire interval | 0.5 s |
+| Fire interval with RAPID FIRE | 0.22 s |
+| Bullet speed | unchanged (780 u/s at the reference canvas) |
+
 ## Waves
 
 Every wave is harder than the last: wave size, enemy health and enemy size all
