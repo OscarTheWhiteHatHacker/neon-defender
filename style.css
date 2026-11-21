@@ -79,6 +79,13 @@ body{
   text-shadow:0 0 14px rgba(56,245,255,.55);
 }
 
+.diff{
+  margin-top:6px;
+  font-size:11px;
+  letter-spacing:.24em;
+  color:var(--dim);
+}
+
 .lives{
   margin-top:10px;
   font-size:clamp(16px,2.6vw,22px);
@@ -189,6 +196,46 @@ body{
 .btn:hover{transform:translateY(-1px);filter:brightness(1.06);
   box-shadow:0 0 0 1px rgba(56,245,255,.75),0 14px 44px rgba(56,245,255,.45)}
 .btn:active{transform:translateY(1px)}
+
+.diffs{
+  margin-top:24px;
+  display:flex;
+  flex-wrap:wrap;
+  justify-content:center;
+  gap:10px;
+}
+
+.diff-btn{
+  padding:10px 20px;
+  font:inherit;
+  font-size:12px;
+  font-weight:700;
+  letter-spacing:.2em;
+  color:var(--dim);
+  background:rgba(4,5,12,.65);
+  border:1px solid rgba(56,245,255,.24);
+  border-radius:999px;
+  cursor:pointer;
+  transition:color .16s ease,border-color .16s ease,background .16s ease,transform .12s ease;
+}
+.diff-btn[data-diff="easy"]{--tone:var(--cyan)}
+.diff-btn[data-diff="medium"]{--tone:var(--amber)}
+.diff-btn[data-diff="hard"]{--tone:var(--pink)}
+.diff-btn:hover{color:var(--text);border-color:rgba(56,245,255,.55);transform:translateY(-1px)}
+.diff-btn.sel{
+  color:#04121a;
+  background:var(--tone);
+  border-color:transparent;
+  box-shadow:0 0 0 1px var(--tone),0 8px 26px rgba(56,245,255,.22);
+}
+
+.diff-note{
+  margin:12px 0 0;
+  min-height:1.4em;
+  font-size:11px;
+  letter-spacing:.14em;
+  color:var(--dim);
+}
 
 .keys{
   margin-top:26px;

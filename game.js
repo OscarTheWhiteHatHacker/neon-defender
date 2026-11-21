@@ -9,6 +9,7 @@
     best: document.getElementById('best'),
     combo: document.getElementById('combo'),
     wave: document.getElementById('wave'),
+    diff: document.getElementById('diff'),
     lives: document.getElementById('lives'),
     power: document.getElementById('powerups'),
     overlay: document.getElementById('overlay'),
@@ -23,6 +24,7 @@
   };
   const isTouch = window.matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window;
   const BEST_KEY = 'neon-defender-best';
+  const DIFF_KEY = 'neon-defender-difficulty';
 
   let W = 960, H = 600, DPR = 1;
   let bgGrad = null;
@@ -86,8 +88,18 @@
   }
 
   // ------------------------------------------------------------------ state
+  // Difficulty only changes how fast enemies close in; wave count, health and
+  // spawn pacing stay the same so the three modes are directly comparable.
+  const DIFFICULTY = {
+    easy:   { label: 'EASY',   speed: 1.15, note: 'ENEMY SPEED x1.15 - SLIGHTLY FASTER THAN THE ORIGINAL' },
+    medium: { label: 'MEDIUM', speed: 1.55, note: 'ENEMY SPEED x1.55 - QUITE FAST' },
+    hard:   { label: 'HARD',   speed: 2.05, note: 'ENEMY SPEED x2.05 - VERY FAST' },
+  };
+  const DIFF_ORDER = ['easy', 'medium', 'hard'];
+
   const G = {
     mode: 'menu',          // menu | play | pause | dead
+    difficulty: 'easy',
     score: 0,
     best: 0,
     wave: 0,
@@ -126,6 +138,10 @@
   const touch = { active: false, id: null, ox: 0, oy: 0, x: 0, y: 0 };
 
   try { G.best = parseInt(localStorage.getItem(BEST_KEY), 10) || 0; } catch (e) { G.best = 0; }
+  try {
+    const savedDiff = localStorage.getItem(DIFF_KEY);
+    if (savedDiff && DIFFICULTY[savedDiff]) G.difficulty = savedDiff;
+  } catch (e) { /* noop */ }
 
   // ------------------------------------------------------------------ input
   // Pointer events arrive in CSS pixels; the world is drawn in world units.
@@ -166,6 +182,11 @@
       keys.fire = true;
       e.preventDefault();
       if (G.mode === 'menu' || G.mode === 'dead') startGame();
+    }
+    const diffIdx = ['Digit1', 'Digit2', 'Digit3'].indexOf(e.code);
+    if (diffIdx >= 0 && G.mode === 'menu') {
+      setDifficulty(DIFF_ORDER[diffIdx]);
+      e.preventDefault();
     }
     if (e.code === 'KeyP' || e.code === 'Escape') {
       e.preventDefault();
@@ -317,6 +338,27 @@
     blip(520, 0.12, 'triangle', 0.05, 320);
   }
 
+  function setDifficulty(key) {
+    if (!DIFFICULTY[key]) return;
+    G.difficulty = key;
+    try { localStorage.setItem(DIFF_KEY, key); } catch (e) { /* noop */ }
+    syncDiffUI();
+    blip(480 + DIFF_ORDER.indexOf(key) * 110, 0.07, 'square', 0.03, 60);
+  }
+
+  // Called after the menu is rendered so the pills always mirror G.difficulty.
+  function syncDiffUI() {
+    const d = DIFFICULTY[G.difficulty];
+    const btns = dom.overlay.querySelectorAll('[data-diff]');
+    for (const b of btns) {
+      const on = b.dataset.diff === G.difficulty;
+      if (on) b.classList.add('sel'); else b.classList.remove('sel');
+      b.setAttribute('aria-pressed', on ? 'true' : 'false');
+    }
+    const note = dom.overlay.querySelector('.diff-note');
+    if (note) note.textContent = d.note;
+  }
+
   function pauseGame() {
     if (G.mode !== 'play') return;
     G.mode = 'pause';
@@ -391,7 +433,7 @@
       type, x, y, vx: 0, vy: 0,
       r: base.r,
       hp, maxhp: hp,
-      speed: base.speed * (1 + Math.min(0.55, (G.wave - 1) * 0.03)),
+      speed: base.speed * DIFFICULTY[G.difficulty].speed * (1 + Math.min(0.55, (G.wave - 1) * 0.03)),
       score: base.score,
       color: base.color,
       fireCd: rand(0.6, 1.6),
@@ -994,6 +1036,7 @@
     dom.score.textContent = G.score.toLocaleString();
     dom.best.textContent = 'BEST ' + Math.max(G.best, G.score).toLocaleString();
     dom.wave.textContent = 'WAVE ' + Math.max(1, G.wave);
+    dom.diff.textContent = DIFFICULTY[G.difficulty].label;
     dom.lives.textContent = P.lives > 0 ? '\u2665'.repeat(P.lives) : '';
     dom.combo.textContent = G.streak > 2 ? 'x' + comboMult().toFixed(1) + ' COMBO' : '';
 
@@ -1019,21 +1062,31 @@
         '<p class="eyebrow">ARCADE // SECTOR 01</p>' +
         '<h1 class="title">NEON<span>DEFENDER</span></h1>' +
         '<p class="tag">Survive endless waves of neon swarm.<br>Chain kills for a score multiplier.</p>' +
+        '<div class="diffs">' +
+          DIFF_ORDER.map((key) =>
+            '<button class="diff-btn" data-diff="' + key + '" aria-pressed="false">' +
+              DIFFICULTY[key].label +
+            '</button>'
+          ).join('') +
+        '</div>' +
+        '<p class="diff-note">' + DIFFICULTY[G.difficulty].note + '</p>' +
         '<button class="btn" data-act="start">PLAY</button>' +
         '<div class="keys">' +
           '<span><b>WASD / ARROWS</b> move</span>' +
           '<span><b>MOUSE / SPACE</b> fire</span>' +
+          '<span><b>1 2 3</b> difficulty</span>' +
           '<span><b>P</b> pause</span>' +
         '</div>' +
         '<p class="hint">' + (isTouch ? 'Drag anywhere to move — the turret fires itself.' : 'Aim with the mouse, hold to fire.') + '</p>' +
       '</div>';
+    syncDiffUI();
   }
 
   function showGameOver() {
     dom.overlay.className = 'overlay show';
     dom.overlay.innerHTML =
       '<div class="panel">' +
-        '<p class="eyebrow">SIGNAL LOST</p>' +
+        '<p class="eyebrow">SIGNAL LOST // ' + DIFFICULTY[G.difficulty].label + '</p>' +
         '<h2 class="title small">GAME OVER</h2>' +
         '<div class="stats">' +
           '<div><span>SCORE</span><b>' + G.score.toLocaleString() + '</b></div>' +
@@ -1057,6 +1110,12 @@
   }
 
   dom.overlay.addEventListener('click', (e) => {
+    const diffBtn = e.target.closest('[data-diff]');
+    if (diffBtn) {
+      initAudio();
+      setDifficulty(diffBtn.dataset.diff);
+      return;
+    }
     const btn = e.target.closest('[data-act]');
     if (!btn) return;
     initAudio();
@@ -1093,8 +1152,8 @@
 
   // small debug surface (used by automated smoke tests)
   window.__NEON__ = {
-    G, P, enemies, bullets, ebullets, particles, pickups,
-    startGame, spawnEnemy, killEnemy, resetGame, gameOver, hurtPlayer,
+    G, P, enemies, bullets, ebullets, particles, pickups, DIFFICULTY,
+    startGame, spawnEnemy, killEnemy, resetGame, gameOver, hurtPlayer, setDifficulty,
     get waveQueue() { return waveQueue; },
   };
 })();
