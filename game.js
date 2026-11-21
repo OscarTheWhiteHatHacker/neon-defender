@@ -138,7 +138,7 @@
   const P = {
     x: 0, y: 0, vx: 0, vy: 0, r: 13,
     aim: -Math.PI / 2, fireCd: 0,
-    lives: 3, invuln: 0, shield: 0, rapid: 0, triple: 0,
+    lives: 3, invuln: 0, shield: 0, rapid: 0, triple: 0, flash: 0,
   };
 
   // r is measured in world units on the 960x600 reference canvas; every spawn
@@ -351,6 +351,7 @@
     P.shield = 0;
     P.rapid = 0;
     P.triple = 0;
+    P.flash = 0;
 
     G.score = 0;
     G.wave = 0;
@@ -545,6 +546,7 @@
     if (P.shield > 0) {
       P.shield = 0;
       P.invuln = 0.9;
+      P.flash = 0.12;
       G.shake = Math.max(G.shake, 8);
       burst(P.x, P.y, '#38f5ff', 22, 280, 0.55);
       floater(P.x, P.y - 30, 'SHIELD DOWN', '#38f5ff', 13);
@@ -554,6 +556,7 @@
 
     P.lives--;
     P.invuln = 1.9;
+    P.flash = 0.12;
     G.shake = 16;
     G.streak = 0;
     burst(P.x, P.y, '#ff3d81', 26, 320, 0.7);
@@ -622,6 +625,7 @@
   // ------------------------------------------------------------------ update
   function updatePlayer(dt) {
     if (P.invuln > 0) P.invuln -= dt;
+    if (P.flash > 0) P.flash = Math.max(0, P.flash - dt);
     if (P.rapid > 0) P.rapid = Math.max(0, P.rapid - dt);
     if (P.triple > 0) P.triple = Math.max(0, P.triple - dt);
 
@@ -1020,27 +1024,84 @@
     }
   }
 
+  // ---- player hull -----------------------------------------------------
+  // Issue #16: the ship used to be a bare triangle. It is now a hand-authored
+  // pixel sprite in the same grid -> offscreen-canvas pipeline as the enemy
+  // hulls: pointed nose, white canopy strip, swept wing with a lit leading
+  // edge, a notched trailing edge and a twin-nozzle engine block. The art
+  // points up, so the sprite is rotated a quarter turn onto P.aim.
+  const PLAYER_ART = {
+    palette: { a: '#0f7f96', b: '#38f5ff', c: '#d6fdff', w: '#ffffff', d: '#07222c' },
+    rows: [
+      '.......c.......',
+      '......cbc......',
+      '......cbc......',
+      '.....cbwbc.....',
+      '.....cbwbc.....',
+      '....cbwwwbc....',
+      '....cbwwwbc....',
+      '...cabbcbbac...',
+      '..cabbbcbbbac..',
+      '.cabbbbcbbbbac.',
+      'cabbbbbbbbbbbac',
+      'cabbbbbbbbbbbac',
+      '..cabbbbbbbac..',
+      '....cddaddc....',
+      '....cddaddc....',
+      '....cddaddc....',
+      '.....caaac.....',
+    ],
+  };
+  const PLAYER_SPRITE = rasteriseSprite(PLAYER_ART.rows, PLAYER_ART.palette);
+
   function drawPlayer() {
     if (G.mode === 'dead') return;
+    const spr = PLAYER_SPRITE;
+    // Hull size is derived from the collision radius, so the art and the hitbox
+    // can never drift apart. Cells snap to whole pixels like the enemy sprites.
+    const s = Math.max(1, Math.round((P.r * 2.5) / spr.w));
     const blink = P.invuln > 0 && Math.floor(G.time * 16) % 2 === 0;
+    // the plume grows with how hard the hull is actually thrusting
+    const throttle = clamp(Math.hypot(P.vx, P.vy) / playerTopSpeed(), 0, 1);
+
     ctx.save();
-    ctx.translate(P.x, P.y);
-    ctx.rotate(P.aim);
+    ctx.translate(Math.round(P.x), Math.round(P.y));
+    ctx.rotate(P.aim + Math.PI / 2);
     ctx.globalAlpha = blink ? 0.32 : 1;
+    ctx.imageSmoothingEnabled = false;
+
+    // twin engine plumes out of the nozzles, jittered so they read as fire
+    const flick = 0.78 + 0.22 * Math.sin(G.time * 34) + rand(-0.1, 0.1);
+    const top = (spr.h / 2 - 0.4) * s;
+    const len = (5 + 11 * throttle) * flick * s;
+    ctx.globalCompositeOperation = 'lighter';
+    for (const dx of [-2 * s, 2 * s]) {
+      ctx.fillStyle = 'rgba(56,245,255,0.42)';
+      ctx.beginPath();
+      ctx.moveTo(dx - 1.5 * s, top);
+      ctx.lineTo(dx + 1.5 * s, top);
+      ctx.lineTo(dx, top + len);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = 'rgba(214,253,255,0.85)';
+      ctx.beginPath();
+      ctx.moveTo(dx - 0.75 * s, top);
+      ctx.lineTo(dx + 0.75 * s, top);
+      ctx.lineTo(dx, top + len * 0.6);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.globalCompositeOperation = 'source-over';
+
     ctx.shadowColor = '#38f5ff';
-    ctx.shadowBlur = 22;
-    // flat triangle: a straight-sided silhouette with a solid base, so the ship
-    // reads as a 2D shape instead of a folded paper-plane style dart.
-    ctx.fillStyle = '#c9feff';
-    ctx.strokeStyle = 'rgba(255,255,255,0.7)';
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    ctx.moveTo(18, 0);
-    ctx.lineTo(-11, 11);
-    ctx.lineTo(-11, -11);
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
+    ctx.shadowBlur = 18;
+    ctx.drawImage(
+      P.flash > 0 ? spr.flash : spr.body,
+      -(spr.w * s) / 2,
+      -(spr.h * s) / 2,
+      spr.w * s,
+      spr.h * s
+    );
     ctx.restore();
 
     if (P.shield > 0) {
@@ -1315,6 +1376,7 @@
   window.__NEON__ = {
     G, P, enemies, bullets, ebullets, particles, pickups, DIFFICULTY,
     startGame, spawnEnemy, killEnemy, resetGame, gameOver, hurtPlayer, setDifficulty,
+    PLAYER_ART,
     get waveQueue() { return waveQueue; },
   };
 })();
