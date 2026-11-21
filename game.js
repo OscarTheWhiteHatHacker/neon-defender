@@ -110,6 +110,14 @@
   };
   const DIFF_ORDER = ['easy', 'medium', 'hard'];
 
+  // Every cleared wave makes the swarm 125% as fast as the wave before it, so a
+  // grunt that closes at 88 u/s in wave 1 is at 110 u/s in wave 2 and 172 u/s by
+  // wave 4. The ramp compounds with the difficulty multiplier.
+  const WAVE_SPEED_STEP = 1.25;
+  function waveSpeedScale() {
+    return Math.pow(WAVE_SPEED_STEP, Math.max(0, G.wave - 1));
+  }
+
   const G = {
     mode: 'menu',          // menu | play | pause | dead
     difficulty: 'easy',
@@ -437,9 +445,9 @@
 
   function spawnEnemy(type, sx, sy) {
     const base = ENEMY[type];
-    // The wave ramp now grows the hull instead of the throttle: bigger bodies
-    // crowd the arena and are harder to slip past, and the radius is then fitted
-    // to the live canvas rather than the enemy being made faster.
+    // The wave ramp grows the hull and the throttle: bodies get bigger and every
+    // wave compounds the closing speed by 125% of the previous wave. The radius
+    // is fitted to the live canvas rather than the enemy being made faster.
     const waveScale = 1 + Math.min(0.45, (G.wave - 1) * 0.045);
     const rBase = base.r * waveScale;
     const r = rBase * sizeScale;
@@ -459,7 +467,7 @@
       type, x, y, vx: 0, vy: 0,
       r, rBase,
       hp, maxhp: hp,
-      speed: base.speed * DIFFICULTY[G.difficulty].speed,
+      speed: base.speed * DIFFICULTY[G.difficulty].speed * waveSpeedScale(),
       score: base.score,
       color: base.color,
       fireCd: rand(0.6, 1.6),
