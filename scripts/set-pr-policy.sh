@@ -1,20 +1,18 @@
 #!/usr/bin/env bash
-# set-pr-policy.sh - enforce "branch + pull request only" on a repo's default
-# branch, and optionally require the auto-reviewer's status check.
+# set-pr-policy.sh - every change to a default branch must arrive as a pull
+# request, and nothing merges without a human pressing merge.
 #
 # usage:
-#   scripts/set-pr-policy.sh                       # current repo
-#   scripts/set-pr-policy.sh owner/repo [owner/repo ...]
-#   REQUIRED_CHECK="pr-guard / guard" scripts/set-pr-policy.sh owner/repo
+#   scripts/set-pr-policy.sh                        # current repo, 0 approvals
+#   APPROVALS=1 scripts/set-pr-policy.sh owner/repo # require a review approval
 #
 # Idempotent: creates the ruleset the first time, updates it afterwards.
-# Rules applied: no deletion, no force-push, no direct commits (every change
-# must arrive as a pull request), stale approvals dismissed on push, review
-# threads must be resolved. bypass_actors is empty on purpose - admins are
-# bound too; edit the ruleset in the UI if you ever need an escape hatch.
+# Rules: no deletion, no force-push, no direct commits, stale approvals
+# dismissed on push, review threads must be resolved. bypass_actors is empty on
+# purpose - admins are bound too.
 set -euo pipefail
 
-REQUIRED_CHECK="${REQUIRED_CHECK:-}"
+APPROVALS="${APPROVALS:-0}"
 
 apply() {
   local repo="$1"
@@ -24,8 +22,7 @@ apply() {
   id=$(gh api "/repos/$repo/rulesets" --jq ".[] | select(.name==\"$name\") | .id" 2>/dev/null || true)
 
   payload=$(mktemp)
-  {
-    cat <<JSON
+  cat >"$payload" <<JSON
 {
   "name": "$name",
   "target": "branch",
@@ -35,23 +32,22 @@ apply() {
     { "type": "deletion" },
     { "type": "non_fast_forward" },
     { "type": "pull_request", "parameters": {
-        "required_approving_review_count": 0,
+        "required_approving_review_count": $APPROVALS,
         "dismiss_stale_reviews_on_push": true,
         "require_code_owner_review": false,
         "require_last_push_approval": false,
         "required_review_thread_resolution": true,
         "allowed_merge_methods": ["squash", "merge", "rebase"]
-    } }$( [ -n "$REQUIRED_CHECK" ] && printf ',\n    { "type": "required_status_checks", "parameters": { "strict_required_status_checks_policy": false, "required_status_checks": [ { "context": "%s" } ] } }' "$REQUIRED_CHECK" )
+    } }
   ],
   "bypass_actors": []
 }
 JSON
-  } >"$payload"
 
   if [ -n "$id" ]; then
-    gh api -X PUT "/repos/$repo/rulesets/$id" --input "$payload" --jq "\"updated ruleset '\(.name)' on $repo\""
+    gh api -X PUT "/repos/$repo/rulesets/$id" --input "$payload" --jq "\"updated ruleset '\(.name)' on $repo (approvals $APPROVALS)\""
   else
-    gh api -X POST "/repos/$repo/rulesets" --input "$payload" --jq "\"created ruleset '\(.name)' on $repo\""
+    gh api -X POST "/repos/$repo/rulesets" --input "$payload" --jq "\"created ruleset '\(.name)' on $repo (approvals $APPROVALS)\""
   fi
   rm -f "$payload"
 }
