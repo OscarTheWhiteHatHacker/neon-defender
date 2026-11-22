@@ -28,6 +28,17 @@
   </div>
 
   <div id="overlay" class="overlay"></div>
+
+  <!-- On-screen arrows (issue #23): the touch stand-in for WASD. Shown only on
+       touch devices while a round is running; the rest of the arena is the
+       aim + fire surface. -->
+  <div id="pad" class="pad" role="group" aria-label="Move">
+    <button type="button" class="pad-btn" data-move="up" aria-label="Move up">&#9650;</button>
+    <button type="button" class="pad-btn" data-move="left" aria-label="Move left">&#9664;</button>
+    <button type="button" class="pad-btn" data-move="right" aria-label="Move right">&#9654;</button>
+    <button type="button" class="pad-btn" data-move="down" aria-label="Move down">&#9660;</button>
+  </div>
+
 </div>
 <script src="game.js"></script>
 </body>

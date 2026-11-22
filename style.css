@@ -119,6 +119,75 @@ body{
 .chip.triple{color:var(--violet)}
 .chip.shield{color:var(--cyan)}
 
+/* ------------------------------------------------------- on-screen arrows */
+/* Issue #23: touch plays like desktop — arrows move, the arena aims and fires.
+   The pad only appears while a round is running (game.js toggles .show). */
+.pad{
+  --pad-btn:clamp(48px,13vw,58px);
+  position:absolute;
+  left:calc(clamp(12px,2.4vw,28px) + env(safe-area-inset-left));
+  bottom:calc(clamp(12px,2.4vw,28px) + env(safe-area-inset-bottom));
+  display:grid;
+  grid-template-columns:repeat(3,var(--pad-btn));
+  grid-template-rows:repeat(3,var(--pad-btn));
+  gap:6px;
+  z-index:3;
+  touch-action:none;
+  opacity:0;
+  pointer-events:none;
+  transition:opacity .18s ease;
+}
+
+.pad.show{opacity:.9;pointer-events:auto}
+
+.pad-btn{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  margin:0;
+  padding:0;
+  font:inherit;
+  font-size:calc(var(--pad-btn) * .34);
+  line-height:1;
+  color:#c6faff;
+  text-shadow:0 0 12px rgba(56,245,255,.8);
+  background:rgba(8,14,30,.66);
+  border:1px solid rgba(56,245,255,.55);
+  border-radius:14px;
+  box-shadow:inset 0 0 18px rgba(56,245,255,.14),0 0 14px rgba(56,245,255,.14);
+  -webkit-backdrop-filter:blur(2px);
+  backdrop-filter:blur(2px);
+  touch-action:none;
+  -webkit-user-select:none;
+  user-select:none;
+  transition:background .1s ease,border-color .1s ease,box-shadow .1s ease,transform .1s ease;
+}
+
+.pad-btn[data-move="up"]{grid-area:1 / 2}
+.pad-btn[data-move="left"]{grid-area:2 / 1}
+.pad-btn[data-move="right"]{grid-area:2 / 3}
+.pad-btn[data-move="down"]{grid-area:3 / 2}
+
+.pad-btn.on{
+  color:#04121a;
+  background:rgba(56,245,255,.85);
+  border-color:rgba(56,245,255,.95);
+  box-shadow:0 0 24px rgba(56,245,255,.5);
+  transform:scale(.95);
+}
+
+/* Touch: the pad owns the bottom-left, so the power-up chips stack down the
+   bottom-right corner — out from under both thumbs and clear of the HUD. */
+body.touch .powerups{
+  left:auto;
+  right:calc(clamp(12px,2.4vw,28px) + env(safe-area-inset-right));
+  transform:none;
+  flex-direction:column;
+  align-items:flex-end;
+  gap:6px;
+}
+
+
 /* -------------------------------------------------------------- overlay */
 .overlay{
   position:absolute;
