@@ -103,6 +103,9 @@ and branch deletion are rejected for everyone — including automation.
 - automated agents act as the `thegreekgodhermes[bot]` GitHub App, so PRs they
   open need a human approval before they can land
 
+Automated PRs are squash-merged, so everything on the branch lands as a single
+commit on `main`.
+
 ## License
 
 MIT
