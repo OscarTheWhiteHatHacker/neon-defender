@@ -12,11 +12,14 @@ A tiny neon arena shooter that runs in a single browser tab. No build step, no d
 | --- | --- |
 | Move | `WASD` / arrow keys |
 | Fire | Mouse (hold) or `Space` |
+| Move (touch) | Hold anywhere on the arena — the ship flies toward your finger and fires along that heading |
 | Difficulty | `1` `2` `3` on the menu, or the EASY / MEDIUM / HARD pills |
 | Pause | `P` or `Esc` |
 | Mute | `M` |
 
-On touch screens: drag anywhere to move, the turret auto-fires at the nearest enemy.
+On touch screens one control does everything: hold anywhere and the ship heads
+for that point, shooting the way it flies. Drag to steer, release to stop. There
+is no auto-target and no separate fire button.
 
 ## Difficulty
 

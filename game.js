@@ -173,7 +173,12 @@
 
   const keys = { left: false, right: false, up: false, down: false, fire: false };
   const mouse = { x: 0, y: 0, down: false, active: false };
-  const touch = { active: false, id: null, ox: 0, oy: 0, x: 0, y: 0 };
+  // One-finger control (issue #21): hold anywhere and the ship flies toward
+  // that point, firing along its heading. No auto-aim, no separate fire button.
+  // The touch is stored in world units so it survives a resize or rotation.
+  const touch = { active: false, id: null, x: 0, y: 0 };
+  const TOUCH_DEADZONE = 10;  // world px around the ship that mean "hold still"
+  const TOUCH_RAMP = 70;      // extra distance travelled to reach full speed
 
   try { G.best = parseInt(localStorage.getItem(BEST_KEY), 10) || 0; } catch (e) { G.best = 0; }
   try {
@@ -203,6 +208,13 @@
   }
   window.addEventListener('resize', queueResize);
   window.addEventListener('orientationchange', queueResize);
+  // Mobile browsers report the new viewport a beat after the rotation starts,
+  // and iOS moves the visual viewport when the URL bar collapses: re-fit both.
+  window.addEventListener('orientationchange', () => {
+    setTimeout(queueResize, 120);
+    setTimeout(queueResize, 320);
+  });
+  if (window.visualViewport) window.visualViewport.addEventListener('resize', queueResize);
 
   const KEYMAP = {
     KeyA: 'left', ArrowLeft: 'left',
@@ -246,12 +258,11 @@
   canvas.addEventListener('pointerdown', (e) => {
     initAudio();
     if (e.pointerType === 'touch') {
+      const p = pointerPos(e);
       touch.active = true;
       touch.id = e.pointerId;
-      touch.ox = e.clientX;
-      touch.oy = e.clientY;
-      touch.x = 0;
-      touch.y = 0;
+      touch.x = p.x;
+      touch.y = p.y;
       try { canvas.setPointerCapture(e.pointerId); } catch (err) { /* noop */ }
     } else {
       const p = pointerPos(e);
@@ -264,21 +275,10 @@
 
   canvas.addEventListener('pointermove', (e) => {
     if (e.pointerType === 'touch' && touch.active && e.pointerId === touch.id) {
-      const dx = e.clientX - touch.ox;
-      const dy = e.clientY - touch.oy;
-      const m = Math.hypot(dx, dy);
-      const max = 62;
-      if (m > 0.5) {
-        const k = Math.min(1, m / max) / m;
-        touch.x = dx * k;
-        touch.y = dy * k;
-      } else {
-        touch.x = 0;
-        touch.y = 0;
-      }
+      // Dragging slides the steer point; the ship keeps chasing it.
       const tp = pointerPos(e);
-      mouse.x = tp.x;
-      mouse.y = tp.y;
+      touch.x = tp.x;
+      touch.y = tp.y;
     } else {
       const p = pointerPos(e);
       mouse.x = p.x;
@@ -292,8 +292,6 @@
       if (e.pointerId === touch.id) {
         touch.active = false;
         touch.id = null;
-        touch.x = 0;
-        touch.y = 0;
       }
     } else {
       mouse.down = false;
@@ -366,8 +364,10 @@
 
     mouse.x = W / 2;
     mouse.y = H * 0.25;
-    touch.x = 0;
-    touch.y = 0;
+    touch.active = false;
+    touch.id = null;
+    touch.x = P.x;
+    touch.y = P.y;
   }
 
   function startGame() {
@@ -404,6 +404,7 @@
     G.mode = 'pause';
     mouse.down = false;
     keys.fire = false;
+    touch.active = false;
     showPaused();
   }
 
@@ -417,6 +418,7 @@
   function gameOver() {
     G.mode = 'dead';
     mouse.down = false;
+    touch.active = false;
     if (G.score > G.best) {
       G.best = G.score;
       try { localStorage.setItem(BEST_KEY, String(G.best)); } catch (e) { /* noop */ }
@@ -631,7 +633,26 @@
 
     let ix = (keys.right ? 1 : 0) - (keys.left ? 1 : 0);
     let iy = (keys.down ? 1 : 0) - (keys.up ? 1 : 0);
-    if (touch.active) { ix += touch.x; iy += touch.y; }
+
+    // Issue #21: one finger does everything. The ship heads straight for the
+    // point being held and shoots along that heading - no auto-target, no
+    // second button. Speed ramps in with distance so a small nudge is gentle.
+    let steer = 0;
+    let touchAim = null;
+    if (touch.active) {
+      const tdx = touch.x - P.x;
+      const tdy = touch.y - P.y;
+      const td = Math.hypot(tdx, tdy);
+      if (td > TOUCH_DEADZONE) {
+        steer = clamp((td - TOUCH_DEADZONE) / TOUCH_RAMP, 0, 1);
+        ix = (tdx / td) * steer;
+        iy = (tdy / td) * steer;
+        touchAim = Math.atan2(tdy, tdx);
+      } else {
+        ix = 0;
+        iy = 0;
+      }
+    }
 
     const m = Math.hypot(ix, iy);
     if (m > 1) { ix /= m; iy /= m; }
@@ -650,14 +671,20 @@
     if (P.y > H - pad) { P.y = H - pad; P.vy = Math.min(0, P.vy); }
 
     const near = nearestEnemy(P.x, P.y);
-    if (isTouch || (!mouse.active && near)) {
-      if (near) P.aim = Math.atan2(near.y - P.y, near.x - P.x);
+    if (touch.active) {
+      // Heading follows the finger, never the nearest enemy. Inside the
+      // deadzone the last heading is kept so a held finger keeps shooting straight.
+      if (touchAim !== null) P.aim = touchAim;
     } else if (mouse.active) {
       P.aim = Math.atan2(mouse.y - P.y, mouse.x - P.x);
+    } else if (!isTouch && near) {
+      // Keyboard-only desktop fallback. Touch devices never auto-target: that
+      // was the "strange auto target" feel this issue is about.
+      P.aim = Math.atan2(near.y - P.y, near.x - P.x);
     }
 
     P.fireCd -= dt;
-    const firing = isTouch ? !!near : (mouse.down || keys.fire);
+    const firing = touch.active || mouse.down || keys.fire;
     if (firing && P.fireCd <= 0) {
       shoot();
       P.fireCd = P.rapid > 0 ? PLAYER_RAPID_CD : PLAYER_FIRE_CD;
@@ -1216,7 +1243,7 @@
   }
 
   function drawCrosshair() {
-    if (isTouch || !mouse.active || G.mode !== 'play') return;
+    if (!mouse.active || G.mode !== 'play') return;
     ctx.save();
     ctx.strokeStyle = 'rgba(56,245,255,0.7)';
     ctx.lineWidth = 1.5;
@@ -1230,6 +1257,31 @@
     ctx.lineTo(mouse.x, mouse.y - 5);
     ctx.moveTo(mouse.x, mouse.y + 5);
     ctx.lineTo(mouse.x, mouse.y + 15);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // The one-finger control needs to show where it is aimed: a ring under the
+  // thumb plus a faint tether to the ship so the heading is never a guess.
+  function drawSteerTarget() {
+    if (!touch.active || G.mode !== 'play') return;
+    ctx.save();
+    ctx.strokeStyle = 'rgba(56,245,255,0.75)';
+    ctx.lineWidth = 1.5;
+    ctx.globalAlpha = 0.5;
+    ctx.setLineDash([5, 7]);
+    ctx.beginPath();
+    ctx.moveTo(P.x, P.y);
+    ctx.lineTo(touch.x, touch.y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.globalAlpha = 0.8;
+    ctx.beginPath();
+    ctx.arc(touch.x, touch.y, 16, 0, TAU);
+    ctx.stroke();
+    ctx.globalAlpha = 0.55;
+    ctx.beginPath();
+    ctx.arc(touch.x, touch.y, 3, 0, TAU);
     ctx.stroke();
     ctx.restore();
   }
@@ -1249,6 +1301,7 @@
     drawFloaters();
     drawBanner();
     drawCrosshair();
+    drawSteerTarget();
     ctx.restore();
   }
 
@@ -1293,13 +1346,15 @@
         '</div>' +
         '<p class="diff-note">' + DIFFICULTY[G.difficulty].note + '</p>' +
         '<button class="btn" data-act="start">PLAY</button>' +
-        '<div class="keys">' +
-          '<span><b>WASD / ARROWS</b> move</span>' +
-          '<span><b>MOUSE / SPACE</b> fire</span>' +
-          '<span><b>1 2 3</b> difficulty</span>' +
-          '<span><b>P</b> pause</span>' +
-        '</div>' +
-        '<p class="hint">' + (isTouch ? 'Drag anywhere to move — the turret fires itself.' : 'Aim with the mouse, hold to fire.') + '</p>' +
+        (isTouch
+          ? '<p class="hint">Hold anywhere on the arena to fly that way and fire.</p>'
+          : '<div class="keys">' +
+              '<span><b>WASD / ARROWS</b> move</span>' +
+              '<span><b>MOUSE / SPACE</b> fire</span>' +
+              '<span><b>1 2 3</b> difficulty</span>' +
+              '<span><b>P</b> pause</span>' +
+            '</div>' +
+            '<p class="hint">Aim with the mouse, hold to fire.</p>') +
       '</div>';
     syncDiffUI();
   }
