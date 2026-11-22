@@ -13,6 +13,7 @@
     lives: document.getElementById('lives'),
     power: document.getElementById('powerups'),
     overlay: document.getElementById('overlay'),
+    pad: document.getElementById('pad'),
   };
 
   const TAU = Math.PI * 2;
@@ -173,12 +174,19 @@
 
   const keys = { left: false, right: false, up: false, down: false, fire: false };
   const mouse = { x: 0, y: 0, down: false, active: false };
-  // One-finger control (issue #21): hold anywhere and the ship flies toward
-  // that point, firing along its heading. No auto-aim, no separate fire button.
-  // The touch is stored in world units so it survives a resize or rotation.
+  // Touch control (issue #23) mirrors the desktop pair: the on-screen arrow pad
+  // is WASD, and holding a finger anywhere on the arena is the mouse — the ship
+  // turns to face that point and fires along it. Movement and aim are separate
+  // thumbs, so neither steals the other's finger.
+  const pad = { up: false, down: false, left: false, right: false };
+  const padPointers = new Map();  // pointerId -> direction held on the pad
   const touch = { active: false, id: null, x: 0, y: 0 };
-  const TOUCH_DEADZONE = 10;  // world px around the ship that mean "hold still"
-  const TOUCH_RAMP = 70;      // extra distance travelled to reach full speed
+  // A finger resting on (or just next to) the ship has no meaningful heading;
+  // keep the last aim instead of spinning on jittery coordinates.
+  const TOUCH_AIM_MIN = 16;
+  // Primary pointer is a mouse but the screen takes fingers: the pad appears
+  // the first time a touch is used, and stays for the rest of the session.
+  let touchSeen = isTouch;
 
   try { G.best = parseInt(localStorage.getItem(BEST_KEY), 10) || 0; } catch (e) { G.best = 0; }
   try {
@@ -258,6 +266,7 @@
   canvas.addEventListener('pointerdown', (e) => {
     initAudio();
     if (e.pointerType === 'touch') {
+      markTouch();
       const p = pointerPos(e);
       touch.active = true;
       touch.id = e.pointerId;
@@ -275,7 +284,7 @@
 
   canvas.addEventListener('pointermove', (e) => {
     if (e.pointerType === 'touch' && touch.active && e.pointerId === touch.id) {
-      // Dragging slides the steer point; the ship keeps chasing it.
+      // Dragging slides the aim point; the ship re-faces it every frame.
       const tp = pointerPos(e);
       touch.x = tp.x;
       touch.y = tp.y;
@@ -301,10 +310,67 @@
   canvas.addEventListener('pointercancel', endPointer);
   window.addEventListener('pointerup', endPointer);
   canvas.addEventListener('contextmenu', (e) => e.preventDefault());
-  window.addEventListener('blur', () => { if (G.mode === 'play') pauseGame(); });
+  window.addEventListener('blur', () => { clearPad(); if (G.mode === 'play') pauseGame(); });
   document.addEventListener('visibilitychange', () => {
-    if (document.hidden && G.mode === 'play') pauseGame();
+    if (document.hidden) { clearPad(); if (G.mode === 'play') pauseGame(); }
   });
+
+  // --------------------------------------------------------- arrow pad
+  // The pad is plain DOM rather than canvas: each arrow owns its own pointer
+  // (captured on press), so a movement thumb and an aiming thumb never fight
+  // over one id, and sliding a thumb off a button still releases it.
+  if (isTouch) document.body.classList.add('touch');
+
+  function markTouch() {
+    if (touchSeen) return;
+    touchSeen = true;
+    document.body.classList.add('touch');
+    syncPadVisibility();
+  }
+
+  function refreshPad() {
+    for (const dir of Object.keys(pad)) pad[dir] = false;
+    for (const dir of padPointers.values()) pad[dir] = true;
+    for (const b of dom.pad.querySelectorAll('[data-move]')) {
+      b.classList.toggle('on', pad[b.dataset.move]);
+    }
+  }
+
+  function releasePadPointer(e) {
+    if (!padPointers.has(e.pointerId)) return;
+    padPointers.delete(e.pointerId);
+    refreshPad();
+  }
+
+  function clearPad() {
+    if (!padPointers.size) return;
+    padPointers.clear();
+    refreshPad();
+  }
+
+  dom.pad.addEventListener('pointerdown', (e) => {
+    const btn = e.target.closest('[data-move]');
+    if (!btn) return;
+    e.preventDefault();
+    initAudio();
+    padPointers.set(e.pointerId, btn.dataset.move);
+    try { btn.setPointerCapture(e.pointerId); } catch (err) { /* noop */ }
+    refreshPad();
+  });
+  dom.pad.addEventListener('pointerup', releasePadPointer);
+  dom.pad.addEventListener('pointercancel', releasePadPointer);
+  dom.pad.addEventListener('lostpointercapture', releasePadPointer);
+  window.addEventListener('pointerup', releasePadPointer);
+  window.addEventListener('pointercancel', releasePadPointer);
+
+  // The pad only makes sense mid-round, and only where a finger is available.
+  let padShown = false;
+  function syncPadVisibility() {
+    const want = touchSeen && G.mode === 'play';
+    if (want === padShown) return;
+    padShown = want;
+    dom.pad.classList.toggle('show', want);
+  }
 
   // ------------------------------------------------------------------ fx
   function burst(x, y, color, n, spd, life) {
@@ -368,6 +434,7 @@
     touch.id = null;
     touch.x = P.x;
     touch.y = P.y;
+    clearPad();
   }
 
   function startGame() {
@@ -405,6 +472,7 @@
     mouse.down = false;
     keys.fire = false;
     touch.active = false;
+    clearPad();
     showPaused();
   }
 
@@ -419,6 +487,7 @@
     G.mode = 'dead';
     mouse.down = false;
     touch.active = false;
+    clearPad();
     if (G.score > G.best) {
       G.best = G.score;
       try { localStorage.setItem(BEST_KEY, String(G.best)); } catch (e) { /* noop */ }
@@ -631,27 +700,16 @@
     if (P.rapid > 0) P.rapid = Math.max(0, P.rapid - dt);
     if (P.triple > 0) P.triple = Math.max(0, P.triple - dt);
 
-    let ix = (keys.right ? 1 : 0) - (keys.left ? 1 : 0);
-    let iy = (keys.down ? 1 : 0) - (keys.up ? 1 : 0);
+    // Issue #23: touch mirrors desktop. The arrow pad is WASD; a held finger on
+    // the arena is the mouse and only decides which way the ship faces.
+    let ix = ((keys.right || pad.right) ? 1 : 0) - ((keys.left || pad.left) ? 1 : 0);
+    let iy = ((keys.down || pad.down) ? 1 : 0) - ((keys.up || pad.up) ? 1 : 0);
 
-    // Issue #21: one finger does everything. The ship heads straight for the
-    // point being held and shoots along that heading - no auto-target, no
-    // second button. Speed ramps in with distance so a small nudge is gentle.
-    let steer = 0;
     let touchAim = null;
     if (touch.active) {
       const tdx = touch.x - P.x;
       const tdy = touch.y - P.y;
-      const td = Math.hypot(tdx, tdy);
-      if (td > TOUCH_DEADZONE) {
-        steer = clamp((td - TOUCH_DEADZONE) / TOUCH_RAMP, 0, 1);
-        ix = (tdx / td) * steer;
-        iy = (tdy / td) * steer;
-        touchAim = Math.atan2(tdy, tdx);
-      } else {
-        ix = 0;
-        iy = 0;
-      }
+      if (Math.hypot(tdx, tdy) >= TOUCH_AIM_MIN) touchAim = Math.atan2(tdy, tdx);
     }
 
     const m = Math.hypot(ix, iy);
@@ -664,16 +722,16 @@
     P.x += P.vx * dt;
     P.y += P.vy * dt;
 
-    const pad = P.r + 4;
-    if (P.x < pad) { P.x = pad; P.vx = Math.max(0, P.vx); }
-    if (P.x > W - pad) { P.x = W - pad; P.vx = Math.min(0, P.vx); }
-    if (P.y < pad) { P.y = pad; P.vy = Math.max(0, P.vy); }
-    if (P.y > H - pad) { P.y = H - pad; P.vy = Math.min(0, P.vy); }
+    const edge = P.r + 4;
+    if (P.x < edge) { P.x = edge; P.vx = Math.max(0, P.vx); }
+    if (P.x > W - edge) { P.x = W - edge; P.vx = Math.min(0, P.vx); }
+    if (P.y < edge) { P.y = edge; P.vy = Math.max(0, P.vy); }
+    if (P.y > H - edge) { P.y = H - edge; P.vy = Math.min(0, P.vy); }
 
     const near = nearestEnemy(P.x, P.y);
     if (touch.active) {
-      // Heading follows the finger, never the nearest enemy. Inside the
-      // deadzone the last heading is kept so a held finger keeps shooting straight.
+      // The heading is exactly the line from the ship to the held finger -
+      // never the nearest enemy. Lifting the finger keeps the last heading.
       if (touchAim !== null) P.aim = touchAim;
     } else if (mouse.active) {
       P.aim = Math.atan2(mouse.y - P.y, mouse.x - P.x);
@@ -1261,25 +1319,31 @@
     ctx.restore();
   }
 
-  // The one-finger control needs to show where it is aimed: a ring under the
-  // thumb plus a faint tether to the ship so the heading is never a guess.
-  function drawSteerTarget() {
+  // The hold-to-face control needs to show where it is aimed: a ring under the
+  // thumb, a faint tether to the ship and a short tick out of the nose along the
+  // real heading (the finger is only the direction, not a destination).
+  function drawAimReticle() {
     if (!touch.active || G.mode !== 'play') return;
     ctx.save();
     ctx.strokeStyle = 'rgba(56,245,255,0.75)';
     ctx.lineWidth = 1.5;
-    ctx.globalAlpha = 0.5;
+    ctx.globalAlpha = 0.4;
     ctx.setLineDash([5, 7]);
     ctx.beginPath();
     ctx.moveTo(P.x, P.y);
     ctx.lineTo(touch.x, touch.y);
     ctx.stroke();
     ctx.setLineDash([]);
-    ctx.globalAlpha = 0.8;
+    ctx.globalAlpha = 0.9;
     ctx.beginPath();
-    ctx.arc(touch.x, touch.y, 16, 0, TAU);
+    ctx.moveTo(P.x + Math.cos(P.aim) * (P.r + 4), P.y + Math.sin(P.aim) * (P.r + 4));
+    ctx.lineTo(P.x + Math.cos(P.aim) * (P.r + 26), P.y + Math.sin(P.aim) * (P.r + 26));
     ctx.stroke();
-    ctx.globalAlpha = 0.55;
+    ctx.globalAlpha = 0.75;
+    ctx.beginPath();
+    ctx.arc(touch.x, touch.y, 15, 0, TAU);
+    ctx.stroke();
+    ctx.globalAlpha = 0.5;
     ctx.beginPath();
     ctx.arc(touch.x, touch.y, 3, 0, TAU);
     ctx.stroke();
@@ -1301,7 +1365,7 @@
     drawFloaters();
     drawBanner();
     drawCrosshair();
-    drawSteerTarget();
+    drawAimReticle();
     ctx.restore();
   }
 
@@ -1347,7 +1411,7 @@
         '<p class="diff-note">' + DIFFICULTY[G.difficulty].note + '</p>' +
         '<button class="btn" data-act="start">PLAY</button>' +
         (isTouch
-          ? '<p class="hint">Hold anywhere on the arena to fly that way and fire.</p>'
+          ? '<p class="hint">Arrow pad to move &middot; hold the arena to aim and fire.</p>'
           : '<div class="keys">' +
               '<span><b>WASD / ARROWS</b> move</span>' +
               '<span><b>MOUSE / SPACE</b> fire</span>' +
@@ -1417,6 +1481,7 @@
 
     render();
     updateHud();
+    syncPadVisibility();
     requestAnimationFrame(frame);
   }
 
@@ -1430,6 +1495,7 @@
   // small debug surface (used by automated smoke tests)
   window.__NEON__ = {
     G, P, enemies, bullets, ebullets, particles, pickups, DIFFICULTY,
+    keys, pad, touch, mouse, isTouch,
     startGame, spawnEnemy, killEnemy, resetGame, gameOver, hurtPlayer, setDifficulty,
     PLAYER_ART,
     get waveQueue() { return waveQueue; },
