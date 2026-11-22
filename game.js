@@ -13,7 +13,8 @@
     lives: document.getElementById('lives'),
     power: document.getElementById('powerups'),
     overlay: document.getElementById('overlay'),
-    pad: document.getElementById('pad'),
+    stick: document.getElementById('stick'),
+    stickKnob: document.getElementById('stick-knob'),
   };
 
   const TAU = Math.PI * 2;
@@ -174,17 +175,24 @@
 
   const keys = { left: false, right: false, up: false, down: false, fire: false };
   const mouse = { x: 0, y: 0, down: false, active: false };
-  // Touch control (issue #23) mirrors the desktop pair: the on-screen arrow pad
-  // is WASD, and holding a finger anywhere on the arena is the mouse — the ship
-  // turns to face that point and fires along it. Movement and aim are separate
-  // thumbs, so neither steals the other's finger.
-  const pad = { up: false, down: false, left: false, right: false };
-  const padPointers = new Map();  // pointerId -> direction held on the pad
+  // Touch control (issues #23, #25): the thumbstick in the bottom-left is WASD,
+  // and holding a finger anywhere on the arena is the mouse — the ship turns to
+  // face that point and fires along it. Movement and aim are separate thumbs, so
+  // neither steals the other's finger.
+  //
+  // The stick is analog: x/y are the knob's offset from centre, normalised to
+  // -1..1, so a half push asks for half speed. (The old four arrow buttons could
+  // only ever ask for full speed in one of eight directions.)
+  const stick = { active: false, id: null, x: 0, y: 0 };
+  let stickGeom = null;  // centre + travel radius, measured on press
+  // A thumb resting near the middle should not drift the ship; input fades in
+  // from zero at the deadzone and only reaches full speed at the rim.
+  const STICK_DEAD = 0.14;
   const touch = { active: false, id: null, x: 0, y: 0 };
   // A finger resting on (or just next to) the ship has no meaningful heading;
   // keep the last aim instead of spinning on jittery coordinates.
   const TOUCH_AIM_MIN = 16;
-  // Primary pointer is a mouse but the screen takes fingers: the pad appears
+  // Primary pointer is a mouse but the screen takes fingers: the stick appears
   // the first time a touch is used, and stays for the rest of the session.
   let touchSeen = isTouch;
 
@@ -310,66 +318,97 @@
   canvas.addEventListener('pointercancel', endPointer);
   window.addEventListener('pointerup', endPointer);
   canvas.addEventListener('contextmenu', (e) => e.preventDefault());
-  window.addEventListener('blur', () => { clearPad(); if (G.mode === 'play') pauseGame(); });
+  window.addEventListener('blur', () => { clearStick(); if (G.mode === 'play') pauseGame(); });
   document.addEventListener('visibilitychange', () => {
-    if (document.hidden) { clearPad(); if (G.mode === 'play') pauseGame(); }
+    if (document.hidden) { clearStick(); if (G.mode === 'play') pauseGame(); }
   });
 
-  // --------------------------------------------------------- arrow pad
-  // The pad is plain DOM rather than canvas: each arrow owns its own pointer
-  // (captured on press), so a movement thumb and an aiming thumb never fight
-  // over one id, and sliding a thumb off a button still releases it.
+  // ------------------------------------------------------- analog thumbstick
+  // DOM rather than canvas: the stick keeps its own captured pointer, so the
+  // movement thumb and the aiming thumb never fight over one id, and dragging a
+  // thumb past the rim still tracks instead of snapping loose.
   if (isTouch) document.body.classList.add('touch');
 
   function markTouch() {
     if (touchSeen) return;
     touchSeen = true;
     document.body.classList.add('touch');
-    syncPadVisibility();
+    syncStickVisibility();
   }
 
-  function refreshPad() {
-    for (const dir of Object.keys(pad)) pad[dir] = false;
-    for (const dir of padPointers.values()) pad[dir] = true;
-    for (const b of dom.pad.querySelectorAll('[data-move]')) {
-      b.classList.toggle('on', pad[b.dataset.move]);
-    }
+  // Centre and travel radius in CSS pixels. Measured on press so the stick keeps
+  // working after a resize/rotation without any cached geometry going stale.
+  function measureStick() {
+    const box = dom.stick.getBoundingClientRect();
+    const knob = dom.stickKnob.getBoundingClientRect();
+    const travel = Math.max(1, (box.width - knob.width) / 2);
+    return { cx: box.left + box.width / 2, cy: box.top + box.height / 2, travel };
   }
 
-  function releasePadPointer(e) {
-    if (!padPointers.has(e.pointerId)) return;
-    padPointers.delete(e.pointerId);
-    refreshPad();
+  function setKnob(dx, dy) {
+    dom.stickKnob.style.setProperty('--kx', dx.toFixed(1) + 'px');
+    dom.stickKnob.style.setProperty('--ky', dy.toFixed(1) + 'px');
   }
 
-  function clearPad() {
-    if (!padPointers.size) return;
-    padPointers.clear();
-    refreshPad();
+  // Track the thumb: the knob offset is the input vector, clamped to the rim.
+  function trackStick(e) {
+    if (!stickGeom) stickGeom = measureStick();
+    let dx = (e.clientX - stickGeom.cx) / stickGeom.travel;
+    let dy = (e.clientY - stickGeom.cy) / stickGeom.travel;
+    const raw = Math.hypot(dx, dy);
+    if (raw > 1) { dx /= raw; dy /= raw; }
+
+    const mag = Math.min(1, raw);
+    const eff = mag <= STICK_DEAD ? 0 : (mag - STICK_DEAD) / (1 - STICK_DEAD);
+    const a = Math.atan2(dy, dx);
+    stick.x = eff === 0 ? 0 : Math.cos(a) * eff;
+    stick.y = eff === 0 ? 0 : Math.sin(a) * eff;
+
+    setKnob(dx * stickGeom.travel, dy * stickGeom.travel);
   }
 
-  dom.pad.addEventListener('pointerdown', (e) => {
-    const btn = e.target.closest('[data-move]');
-    if (!btn) return;
+  function releaseStick(e) {
+    if (e && e.pointerId !== undefined && e.pointerId !== stick.id) return;
+    stick.active = false;
+    stick.id = null;
+    stick.x = 0;
+    stick.y = 0;
+    stickGeom = null;
+    dom.stick.classList.remove('dragging');
+    setKnob(0, 0);
+  }
+
+  function clearStick() { releaseStick(); }
+
+  dom.stick.addEventListener('pointerdown', (e) => {
     e.preventDefault();
     initAudio();
-    padPointers.set(e.pointerId, btn.dataset.move);
-    try { btn.setPointerCapture(e.pointerId); } catch (err) { /* noop */ }
-    refreshPad();
+    stickGeom = measureStick();
+    stick.active = true;
+    stick.id = e.pointerId;
+    dom.stick.classList.add('dragging');
+    try { dom.stick.setPointerCapture(e.pointerId); } catch (err) { /* noop */ }
+    trackStick(e);
   });
-  dom.pad.addEventListener('pointerup', releasePadPointer);
-  dom.pad.addEventListener('pointercancel', releasePadPointer);
-  dom.pad.addEventListener('lostpointercapture', releasePadPointer);
-  window.addEventListener('pointerup', releasePadPointer);
-  window.addEventListener('pointercancel', releasePadPointer);
+  dom.stick.addEventListener('pointermove', (e) => {
+    if (!stick.active || e.pointerId !== stick.id) return;
+    e.preventDefault();
+    trackStick(e);
+  });
+  dom.stick.addEventListener('pointerup', releaseStick);
+  dom.stick.addEventListener('pointercancel', releaseStick);
+  dom.stick.addEventListener('lostpointercapture', releaseStick);
+  window.addEventListener('pointerup', releaseStick);
+  window.addEventListener('pointercancel', releaseStick);
 
-  // The pad only makes sense mid-round, and only where a finger is available.
-  let padShown = false;
-  function syncPadVisibility() {
+  // The stick only makes sense mid-round, and only where a finger is available.
+  let stickShown = false;
+  function syncStickVisibility() {
     const want = touchSeen && G.mode === 'play';
-    if (want === padShown) return;
-    padShown = want;
-    dom.pad.classList.toggle('show', want);
+    if (want === stickShown) return;
+    stickShown = want;
+    dom.stick.classList.toggle('show', want);
+    if (!want) clearStick();
   }
 
   // ------------------------------------------------------------------ fx
@@ -434,7 +473,7 @@
     touch.id = null;
     touch.x = P.x;
     touch.y = P.y;
-    clearPad();
+    clearStick();
   }
 
   function startGame() {
@@ -472,7 +511,7 @@
     mouse.down = false;
     keys.fire = false;
     touch.active = false;
-    clearPad();
+    clearStick();
     showPaused();
   }
 
@@ -487,7 +526,7 @@
     G.mode = 'dead';
     mouse.down = false;
     touch.active = false;
-    clearPad();
+    clearStick();
     if (G.score > G.best) {
       G.best = G.score;
       try { localStorage.setItem(BEST_KEY, String(G.best)); } catch (e) { /* noop */ }
@@ -700,10 +739,12 @@
     if (P.rapid > 0) P.rapid = Math.max(0, P.rapid - dt);
     if (P.triple > 0) P.triple = Math.max(0, P.triple - dt);
 
-    // Issue #23: touch mirrors desktop. The arrow pad is WASD; a held finger on
-    // the arena is the mouse and only decides which way the ship faces.
-    let ix = ((keys.right || pad.right) ? 1 : 0) - ((keys.left || pad.left) ? 1 : 0);
-    let iy = ((keys.down || pad.down) ? 1 : 0) - ((keys.up || pad.up) ? 1 : 0);
+    // Issues #23/#25: touch mirrors desktop. The thumbstick is WASD; a held
+    // finger on the arena is the mouse and only decides which way the ship faces.
+    // The stick is analog, so a half push adds half a unit of input and the ship
+    // accelerates to half its top speed.
+    let ix = (keys.right ? 1 : 0) - (keys.left ? 1 : 0) + stick.x;
+    let iy = (keys.down ? 1 : 0) - (keys.up ? 1 : 0) + stick.y;
 
     let touchAim = null;
     if (touch.active) {
@@ -1411,7 +1452,7 @@
         '<p class="diff-note">' + DIFFICULTY[G.difficulty].note + '</p>' +
         '<button class="btn" data-act="start">PLAY</button>' +
         (isTouch
-          ? '<p class="hint">Arrow pad to move &middot; hold the arena to aim and fire.</p>'
+          ? '<p class="hint">Drag the stick to move &middot; hold the arena to aim and fire.</p>'
           : '<div class="keys">' +
               '<span><b>WASD / ARROWS</b> move</span>' +
               '<span><b>MOUSE / SPACE</b> fire</span>' +
@@ -1481,7 +1522,7 @@
 
     render();
     updateHud();
-    syncPadVisibility();
+    syncStickVisibility();
     requestAnimationFrame(frame);
   }
 
@@ -1495,7 +1536,7 @@
   // small debug surface (used by automated smoke tests)
   window.__NEON__ = {
     G, P, enemies, bullets, ebullets, particles, pickups, DIFFICULTY,
-    keys, pad, touch, mouse, isTouch,
+    keys, stick, touch, mouse, isTouch,
     startGame, spawnEnemy, killEnemy, resetGame, gameOver, hurtPlayer, setDifficulty,
     PLAYER_ART,
     get waveQueue() { return waveQueue; },
