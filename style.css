@@ -119,18 +119,18 @@ body{
 .chip.triple{color:var(--violet)}
 .chip.shield{color:var(--cyan)}
 
-/* ------------------------------------------------------- on-screen arrows */
-/* Issue #23: touch plays like desktop — arrows move, the arena aims and fires.
-   The pad only appears while a round is running (game.js toggles .show). */
-.pad{
-  --pad-btn:clamp(48px,13vw,58px);
+/* -------------------------------------------------------- analog thumbstick */
+/* Issue #25: the four arrow buttons became one draggable knob. The knob's
+   offset from centre IS the movement vector, so the ship can creep or sprint.
+   The stick only appears while a round is running (game.js toggles .show). */
+.stick{
+  --stick-size:clamp(116px,31vw,152px);
+  --knob-size:calc(var(--stick-size) * .42);
   position:absolute;
   left:calc(clamp(12px,2.4vw,28px) + env(safe-area-inset-left));
   bottom:calc(clamp(12px,2.4vw,28px) + env(safe-area-inset-bottom));
-  display:grid;
-  grid-template-columns:repeat(3,var(--pad-btn));
-  grid-template-rows:repeat(3,var(--pad-btn));
-  gap:6px;
+  width:var(--stick-size);
+  height:var(--stick-size);
   z-index:3;
   touch-action:none;
   opacity:0;
@@ -138,45 +138,57 @@ body{
   transition:opacity .18s ease;
 }
 
-.pad.show{opacity:.9;pointer-events:auto}
+.stick.show{opacity:.9;pointer-events:auto}
 
-.pad-btn{
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  margin:0;
-  padding:0;
-  font:inherit;
-  font-size:calc(var(--pad-btn) * .34);
-  line-height:1;
-  color:#c6faff;
-  text-shadow:0 0 12px rgba(56,245,255,.8);
-  background:rgba(8,14,30,.66);
-  border:1px solid rgba(56,245,255,.55);
-  border-radius:14px;
-  box-shadow:inset 0 0 18px rgba(56,245,255,.14),0 0 14px rgba(56,245,255,.14);
+/* The base is decoration: the knob is the only thing that has to be hit. */
+.stick-base{
+  position:absolute;
+  inset:0;
+  border-radius:50%;
+  border:1px solid rgba(56,245,255,.42);
+  background:
+    radial-gradient(circle at 50% 50%,rgba(56,245,255,.10),rgba(8,14,30,.5) 62%,rgba(8,14,30,.16) 100%);
+  box-shadow:inset 0 0 26px rgba(56,245,255,.12),0 0 16px rgba(56,245,255,.10);
   -webkit-backdrop-filter:blur(2px);
   backdrop-filter:blur(2px);
-  touch-action:none;
-  -webkit-user-select:none;
-  user-select:none;
-  transition:background .1s ease,border-color .1s ease,box-shadow .1s ease,transform .1s ease;
 }
 
-.pad-btn[data-move="up"]{grid-area:1 / 2}
-.pad-btn[data-move="left"]{grid-area:2 / 1}
-.pad-btn[data-move="right"]{grid-area:2 / 3}
-.pad-btn[data-move="down"]{grid-area:3 / 2}
-
-.pad-btn.on{
-  color:#04121a;
-  background:rgba(56,245,255,.85);
-  border-color:rgba(56,245,255,.95);
-  box-shadow:0 0 24px rgba(56,245,255,.5);
-  transform:scale(.95);
+/* Centre pip + crosshair: reads as a stick, and shows where "no input" is. */
+.stick-base::after{
+  content:"";
+  position:absolute;
+  inset:0;
+  border-radius:50%;
+  background:
+    linear-gradient(rgba(56,245,255,.20),rgba(56,245,255,.20)) center / 1px 46% no-repeat,
+    linear-gradient(rgba(56,245,255,.20),rgba(56,245,255,.20)) center / 46% 1px no-repeat;
+  opacity:.7;
+  pointer-events:none;
 }
 
-/* Touch: the pad owns the bottom-left, so the power-up chips stack down the
+.stick-knob{
+  position:absolute;
+  left:50%;
+  top:50%;
+  width:var(--knob-size);
+  height:var(--knob-size);
+  margin:0;
+  border-radius:50%;
+  background:radial-gradient(circle at 38% 34%,rgba(198,250,255,.95),rgba(56,245,255,.72) 55%,rgba(24,120,150,.85));
+  border:1px solid rgba(198,250,255,.85);
+  box-shadow:0 0 18px rgba(56,245,255,.55),inset 0 0 12px rgba(4,18,26,.45);
+  transform:translate(-50%,-50%) translate(var(--kx,0px),var(--ky,0px));
+  transition:transform .12s ease,box-shadow .12s ease;
+  pointer-events:none;
+}
+
+/* While a thumb owns it the knob must track the finger with zero easing. */
+.stick.dragging .stick-knob{
+  transition:none;
+  box-shadow:0 0 26px rgba(56,245,255,.8),inset 0 0 12px rgba(4,18,26,.35);
+}
+
+/* Touch: the stick owns the bottom-left, so the power-up chips stack down the
    bottom-right corner — out from under both thumbs and clear of the HUD. */
 body.touch .powerups{
   left:auto;

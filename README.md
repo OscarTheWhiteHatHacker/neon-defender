@@ -12,17 +12,22 @@ A tiny neon arena shooter that runs in a single browser tab. No build step, no d
 | --- | --- |
 | Move | `WASD` / arrow keys |
 | Aim + fire | Mouse (hold) or `Space` |
-| Move (touch) | On-screen arrow pad in the bottom-left corner |
+| Move (touch) | Analog thumbstick in the bottom-left corner — push further to go faster |
 | Aim + fire (touch) | Hold a finger anywhere on the arena — the ship turns to face it and fires that way |
 | Difficulty | `1` `2` `3` on the menu, or the EASY / MEDIUM / HARD pills |
 | Pause | `P` or `Esc` |
 | Mute | `M` |
 
-Touch plays the same way the keyboard and mouse do, just with thumbs: the four
-on-screen arrows replace `WASD`, and holding a finger on the arena replaces the
-mouse — the ship turns to face your finger and keeps shooting for as long as you
-hold. Move and aim are separate fingers, so you can strafe one way while firing
+Touch plays the same way the keyboard and mouse do, just with thumbs: the
+thumbstick replaces `WASD`, and holding a finger on the arena replaces the mouse
+— the ship turns to face your finger and keeps shooting for as long as you hold.
+Move and aim are separate fingers, so you can strafe one way while firing
 another. Lifting the aim finger keeps the last heading; there is no auto-target.
+
+The stick is analog: the direction you drag is the direction you fly, and how far
+you push sets the speed — a light push creeps, a full push sprints. That is the
+same top speed `WASD` gives you (the ship is tuned to barely outrun a chaser),
+it just lets you pick any point below it instead of only full tilt.
 
 ## Difficulty
 
@@ -78,7 +83,7 @@ gets very fast very quickly.
 - High score saved to `localStorage`
 - Particles, screen shake, procedural WebAudio blips — zero asset files
 - Responsive canvas with device-pixel-ratio scaling, works on phone and desktop
-- On-screen arrow pad on touch devices — move with the arrows, hold the arena to aim and fire, exactly like WASD + mouse
+- Analog thumbstick on touch devices — drag for direction and speed, hold the arena to aim and fire, exactly like WASD + mouse
 
 ## Run locally
 
