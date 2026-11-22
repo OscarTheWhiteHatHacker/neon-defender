@@ -92,6 +92,17 @@ style.css    neon UI, overlay panels, responsive layout
 game.js      the whole game — loop, entities, waves, rendering, audio
 ```
 
+## Contributing
+
+`main` is protected: every change has to arrive as a pull request and be
+**approved by the maintainer** before it can merge. Direct pushes, force-pushes
+and branch deletion are rejected for everyone — including automation.
+
+- branch off `main` as `feat/<slug>`, `fix/<slug>` or `agent/<issue>-<slug>`
+- open the PR, then stop: a human reviews and merges
+- automated agents act as the `thegreekgodhermes[bot]` GitHub App, so PRs they
+  open need a human approval before they can land
+
 ## License
 
 MIT
