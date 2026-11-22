@@ -1,0 +1,31 @@
+name: pr-guard
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-guard-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  pr-guard:
+    name: pr-guard
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Scan the PR diff
+        env:
+          ACTOR: ${{ github.actor }}
+          OWNER: ${{ github.repository_owner }}
+          MAINTAINER_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'maintainer-approved') && 'yes' || 'no' }}
+        run: |
+          chmod +x scripts/pr-guard.sh
+          ./scripts/pr-guard.sh "origin/${{ github.base_ref }}"
